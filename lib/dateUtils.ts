@@ -9,9 +9,9 @@ export function getMonthRange(events: Event[]) {
     }
   }
 
-  const dates = events.map((event) => event.start)
-  const minDate = new Date(Math.min.apply(null, dates))
-  const maxDate = new Date(Math.max.apply(null, dates))
+  const dates = events.map((event) => event.start.getTime()) // Convert Date to timestamp
+  const minDate = new Date(Math.min(...dates)) // Spread the array of timestamps
+  const maxDate = new Date(Math.max(...dates))
 
   if (minDate.getMonth() === maxDate.getMonth() && minDate.getFullYear() === maxDate.getFullYear()) {
     return {
@@ -25,4 +25,3 @@ export function getMonthRange(events: Event[]) {
     }
   }
 }
-

@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState, useRef, useCallback } from 'react'
-import { ChevronLeft, ChevronRight, Share, Trash2, Download } from 'lucide-react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
+import { ChevronLeft, ChevronRight, Share, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -15,6 +15,19 @@ import {
 } from "@/components/ui/dialog"
 import { cn } from '@/lib/utils'
 import html2canvas from 'html2canvas'
+
+
+const getColorClass = (color: string) => {
+  switch (color) {
+    case 'red': return 'bg-red-200'
+    case 'yellow': return 'bg-yellow-200'
+    case 'green': return 'bg-green-200'
+    case 'blue': return 'bg-blue-200'
+    case 'purple': return 'bg-purple-200'
+    case 'pink': return 'bg-pink-200'
+    default: return 'bg-gray-200'
+  }
+}
 
 interface CalendarEvent {
   id: string
@@ -36,7 +49,15 @@ export function Calendar() {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [selectedDates, setSelectedDates] = useState<Date[]>([])
-  const [isSelecting, setIsSelecting] = useState(false)
+  const [dragSelection, setDragSelection] = useState<{
+    start: Date | null,
+    end: Date | null,
+    isSelecting: boolean
+  }>({
+    start: null,
+    end: null,
+    isSelecting: false
+  })
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [newEventLabel, setNewEventLabel] = useState('')
@@ -45,9 +66,105 @@ export function Calendar() {
   const [draggedEvent, setDraggedEvent] = useState<CalendarEvent | null>(null)
   const [dragStart, setDragStart] = useState<number | null>(null)
   const [dragEnd, setDragEnd] = useState<number | null>(null)
-  const [hoveredEventId, setHoveredEventId] = useState<string | null>(null);
+  const [hoveredEventId, setHoveredEventId] = useState<string | null>(null)
+  const [screenWidth, setScreenWidth] = useState<number>(0)
   const calendarRef = useRef<HTMLDivElement>(null)
   const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Responsive adjustments
+  useEffect(() => {
+    const handleResize = () => {
+      setScreenWidth(window.innerWidth);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    // Cleanup event listener on unmount
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const handleDateMouseDown = (date: Date) => {
+    // Reset any previous selections
+    setDragSelection({
+      start: date,
+      end: date,
+      isSelecting: true
+    })
+  }
+
+  const handleDateMouseEnter = (date: Date) => {
+    if (dragSelection.isSelecting) {
+      setDragSelection(prev => ({
+        ...prev,
+        end: date
+      }))
+    }
+  }
+
+  const handleDateMouseUp = () => {
+    if (dragSelection.start && dragSelection.end) {
+      // Get dates in the selected range
+      const selectedRange = getDatesInRange(dragSelection.start, dragSelection.end)
+      
+      // Set selected dates and open dialog
+      setSelectedDates(selectedRange)
+      setIsDialogOpen(true)
+    }
+
+    // Reset drag selection
+    setDragSelection({
+      start: null,
+      end: null,
+      isSelecting: false
+    })
+  }
+
+  const isDateInDragSelection = (date: Date) => {
+    if (!dragSelection.start || !dragSelection.end) return false;
+    
+    const start = new Date(Math.min(dragSelection.start.getTime(), dragSelection.end.getTime()));
+    const end = new Date(Math.max(dragSelection.start.getTime(), dragSelection.end.getTime()));
+    
+    return date >= start && date <= end;
+  }
+
+  // Modify days rendering to include drag selection logic
+  const renderDays = () => {
+    return days.map(({ date, isCurrentMonth }, index) => {
+      const isSelected = isDateSelected(date)
+      const isInDragSelection = isDateInDragSelection(date)
+      
+      return (
+        <div
+          key={index}
+          className={cn(
+            "relative p-1 sm:p-2 text-center cursor-pointer transition-colors h-8 sm:h-10",
+            isCurrentMonth ? "text-foreground" : "text-muted-foreground",
+            (isSelected || isInDragSelection) && "bg-primary/20"
+          )}
+          onMouseDown={() => handleDateMouseDown(date)}
+          onMouseEnter={() => handleDateMouseEnter(date)}
+          onMouseUp={handleDateMouseUp}
+          onTouchStart={() => handleDateMouseDown(date)}
+          onTouchMove={(e) => {
+            const touch = e.touches[0];
+            const targetElement = document.elementFromPoint(touch.clientX, touch.clientY);
+            if (targetElement) {
+              const dateAttribute = targetElement.getAttribute('data-date');
+              if (dateAttribute) {
+                handleDateMouseEnter(new Date(parseInt(dateAttribute)));
+              }
+            }
+          }}
+          onTouchEnd={handleDateMouseUp}
+          data-date={date.getTime()}
+        >
+          <span className="relative z-20 inline-flex items-center justify-center w-5 h-5 sm:w-6 sm:h-6 rounded-full text-xs sm:text-base">
+            {date.getDate()}
+          </span>
+        </div>
+      )
+    })
+  }
 
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear()
@@ -73,24 +190,24 @@ export function Calendar() {
     return days
   }
 
-  const handleDateClick = (date: Date) => {
-    if (!isSelecting) {
-      setIsSelecting(true)
-      setSelectedDates([date])
-    } else {
-      const newDates = getDatesInRange(selectedDates[0], date)
-      setSelectedDates(newDates)
-      setIsSelecting(false)
-      setIsDialogOpen(true)
-    }
-  }
+  // const handleDateClick = (date: Date) => {
+  //   if (!isSelecting) {
+  //     setIsSelecting(true)
+  //     setSelectedDates([date])
+  //   } else {
+  //     const newDates = getDatesInRange(selectedDates[0], date)
+  //     setSelectedDates(newDates)
+  //     setIsSelecting(false)
+  //     setIsDialogOpen(true)
+  //   }
+  // }
 
   const getDatesInRange = (start: Date, end: Date) => {
     const dates: Date[] = []
     const startDate = new Date(Math.min(start.getTime(), end.getTime()))
     const endDate = new Date(Math.max(start.getTime(), end.getTime()))
     
-    let currentDate = startDate
+    let currentDate = new Date(startDate)
     while (currentDate <= endDate) {
       dates.push(new Date(currentDate))
       currentDate.setDate(currentDate.getDate() + 1)
@@ -171,7 +288,7 @@ export function Calendar() {
       setDraggedEvent(event)
       setDragStart(index)
       setDragEnd(index)
-    }, 500) // 500ms long press
+    }, 500)
   }, [])
 
   const handleLongPressEnd = useCallback(() => {
@@ -200,99 +317,118 @@ export function Calendar() {
     setDragEnd(null)
   }, [draggedEvent, dragStart, dragEnd, days, events])
 
+  const handleShare = async () => {
+    // Check if calendarRef exists
+    if (calendarRef.current) {
+      try {
+        // Use html2canvas to capture the calendar
+        const canvas = await html2canvas(calendarRef.current, {
+          useCORS: true,
+          scale: window.devicePixelRatio,
+          logging: false,
+        });
+        
+        // Convert canvas to image data URL
+        const image = canvas.toDataURL('image/png');
+        
+        // Create a temporary anchor element to trigger the download
+        const link = document.createElement('a');
+        link.href = image;
+        link.download = 'calendar.png';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        // Share to Twitter
+        const text = "Check out my calendar this month!";
+        // shareToTwitter(image, text);
+      } catch (error) {
+        console.error('Error sharing calendar:', error);
+        // Optional: Add user-friendly error handling
+        alert('Failed to share calendar. Please try again.');
+      }
+    }
+  };
+
   const renderEventCapsules = () => {
     const capsules: JSX.Element[] = []
-
+  
     events.forEach((event, eventIndex) => {
       let startIndex = -1
       let endIndex = -1
-
+  
       days.forEach((day, index) => {
-        const isEventDate = event.dates.some(eventDate => 
+        const isEventDate = event.dates.some(eventDate =>
           eventDate.getDate() === day.date.getDate() &&
           eventDate.getMonth() === day.date.getMonth() &&
           eventDate.getFullYear() === day.date.getFullYear()
         )
-
+  
         if (isEventDate && startIndex === -1) {
           startIndex = index
         }
-
+  
         if (isEventDate) {
           endIndex = index
         }
-
+  
         if ((!isEventDate || index === days.length - 1) && startIndex !== -1) {
-          capsules.push(createCapsule(startIndex, endIndex, event, eventIndex, event.id === hoveredEventId))
+          capsules.push(
+            <React.Fragment key={`event-${event.id}-${eventIndex}-${startIndex}`}>
+              {createCapsule(startIndex, endIndex, event, eventIndex, event.id === hoveredEventId)}
+            </React.Fragment>
+          )
           startIndex = -1
           endIndex = -1
         }
       })
     })
-
+  
     return capsules
-  }
+  }  
 
-  const createCapsule = (startIndex: number, endIndex: number, event: CalendarEvent, eventIndex: number, isHovered: boolean) => {
+  const createCapsule = (
+    startIndex: number,
+    endIndex: number,
+    event: CalendarEvent,
+    eventIndex: number,
+    isHovered: boolean
+  ): JSX.Element => {
     const startRow = Math.floor(startIndex / 7)
     const endRow = Math.floor(endIndex / 7)
-    const capsuleParts: JSX.Element[] = []
-
-    for (let row = startRow; row <= endRow; row++) {
-      const rowStartIndex = row === startRow ? startIndex : row * 7
-      const rowEndIndex = row === endRow ? endIndex : (row + 1) * 7 - 1
-
-      capsuleParts.push(
-        <div
-          key={`capsule-${event.id}-${row}`}
-          className={cn(
-            "absolute z-10 cursor-move transition-all duration-300",
-            getColorClass(event.color),
-            row === startRow && "rounded-l-full",
-            row === endRow && "rounded-r-full",
-            isHovered && "z-20 animate-pulse"
-          )}
-          style={{
-            left: `calc(${(rowStartIndex % 7) * 14.28}% + 2px)`,
-            top: `calc(${row * 40}px + 34px)`,
-            width: `calc(${((rowEndIndex % 7) - (rowStartIndex % 7) + 1) * 14.28}% - 4px)`,
-            height: '24px',
-          }}
-          onMouseDown={() => handleLongPressStart(event, startIndex)}
-          onMouseUp={handleLongPressEnd}
-          onMouseLeave={handleLongPressEnd}
-          onTouchStart={() => handleLongPressStart(event, startIndex)}
-          onTouchEnd={handleLongPressEnd}
-          onMouseMove={() => handleDrag(rowEndIndex)}
-          onTouchMove={(e) => {
-            const touch = e.touches[0]
-            const element = document.elementFromPoint(touch.clientX, touch.clientY)
-            const index = Array.from(element?.parentElement?.children || []).indexOf(element as Element)
-            if (index !== -1) handleDrag(index)
-          }}
-        />
-      )
-    }
-
-    return capsuleParts
+  
+    return (
+      <>
+        {Array.from({ length: endRow - startRow + 1 }, (_, row) => {
+          const currentRow = startRow + row
+          const rowStartIndex = currentRow === startRow ? startIndex : currentRow * 7
+          const rowEndIndex = currentRow === endRow ? endIndex : (currentRow + 1) * 7 - 1
+  
+          const rowHeight = screenWidth < 640 ? 32 : 40
+          const topOffset = screenWidth < 640 ? 28 : 34
+  
+          return (
+            <div
+              key={`capsule-${event.id}-${currentRow}`}
+              className={cn(
+                "absolute z-10 cursor-move transition-all duration-300",
+                getColorClass(event.color),
+                currentRow === startRow && "rounded-l-full",
+                currentRow === endRow && "rounded-r-full",
+                isHovered && "z-20 animate-pulse"
+              )}
+              style={{
+                left: `calc(${(rowStartIndex % 7) * 14.28}% + 2px)`,
+                top: `calc(${currentRow * rowHeight}px + ${topOffset}px)`,
+                width: `calc(${((rowEndIndex % 7) - (rowStartIndex % 7) + 1) * 14.28}% - 4px)`,
+                height: `${screenWidth < 640 ? '20px' : '24px'}`,
+              }}
+            ></div>
+          )
+        })}
+      </>
+    )
   }
-
-  const getColorClass = (color: string) => {
-    switch (color) {
-      case 'red': return 'bg-red-200'
-      case 'yellow': return 'bg-yellow-200'
-      case 'green': return 'bg-green-200'
-      case 'blue': return 'bg-blue-200'
-      case 'purple': return 'bg-purple-200'
-      case 'pink': return 'bg-pink-200'
-      default: return 'bg-gray-200'
-    }
-  }
-
-  const shareToTwitter = (imageUrl: string, text: string) => {
-    const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(imageUrl)}`;
-    window.open(twitterUrl, '_blank');
-  };
 
   const renderEventLabels = () => {
     return events.map((event, index) => {
@@ -302,31 +438,51 @@ export function Calendar() {
         day.date.getMonth() === startDate.getMonth() &&
         day.date.getFullYear() === startDate.getFullYear()
       )
-
+  
       if (startIndex === -1) return null
-
+  
       const row = Math.floor(startIndex / 7)
       const col = startIndex % 7
-
+  
+      const rowHeight = screenWidth < 640 ? 32 : 40
+      const labelY = `${row * rowHeight + 20}px`
+      const labelOffset = screenWidth < 640 ? '80px' : '120px'
+  
       const labelX = col < 3 ? '100%' : '0%'
-      const labelY = `${row * 40 + 20}px`
       const arrowStartX = col < 3 ? '0%' : '100%'
       const arrowStartY = '50%'
       const arrowEndX = `${col * 14.28 + 7.14}%`
-      const arrowEndY = `${row * 40 + 20}px`
-
+      const arrowEndY = `${row * rowHeight + 20}px`
+  
       return (
-        <div key={event.id} className="absolute" style={{ top: labelY, [col < 3 ? 'left' : 'right']: '-120px' }}>
+        <div 
+          key={event.id} 
+          className="absolute" 
+          style={{ 
+            top: labelY, 
+            [col < 3 ? 'left' : 'right']: `-${labelOffset}` 
+          }}
+        >
           <div 
-            className={`${getColorClass(event.color)} px-2 py-1 rounded-full text-xs font-handwriting cursor-pointer`}
+            className="flex items-center space-x-2 cursor-pointer"
             onClick={() => {
               setEditingEvent(event)
               setIsEditDialogOpen(true)
             }}
           >
-            {event.label}
+            <div 
+              className={`w-4 h-4 rounded-full ${getColorClass(event.color)} flex-shrink-0`}
+            ></div>
+            <div 
+              className="bg-white px-2 py-1 rounded-full text-xs font-handwriting shadow-sm"
+            >
+              {event.label}
+            </div>
           </div>
-          <svg className="absolute top-0 left-0 w-full h-full pointer-events-none" style={{ overflow: 'visible' }}>
+          <svg 
+            className="absolute top-0 left-0 w-full h-full pointer-events-none" 
+            style={{ overflow: 'visible' }}
+          >
             <path
               d={`M ${arrowStartX} ${arrowStartY} Q ${col < 3 ? '50%' : '150%'} ${arrowStartY}, ${arrowEndX} ${arrowEndY}`}
               fill="none"
@@ -338,47 +494,24 @@ export function Calendar() {
       )
     })
   }
-
-  const handleDownload = async () => {
-    if (calendarRef.current) {
-      const canvas = await html2canvas(calendarRef.current);
-      const image = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.href = image;
-      link.download = 'calendar.png';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-  };
-
-  const handleShare = () => {
-    if (calendarRef.current) {
-      html2canvas(calendarRef.current).then(canvas => {
-        const image = canvas.toDataURL('image/png');
-        const text = "Check out my calendar this month!";
-        shareToTwitter(image, text);
-      });
-    }
-  };
-
+  
   return (
-    <div className="w-full max-w-3xl mx-auto p-4">
+    <div className="w-full max-w-3xl mx-auto p-2 sm:p-4">
       <div 
-        className="border rounded-lg p-4 bg-white relative" 
+        className="border rounded-lg p-2 sm:p-4 bg-white relative" 
         ref={calendarRef}
-        onMouseUp={handleDragEnd}
-        onTouchEnd={handleDragEnd}
+        onMouseUp={handleDateMouseUp}
+        onTouchEnd={handleDateMouseUp}
       >
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-sem
-ibold">
+        <div className="flex items-center justify-between mb-2 sm:mb-4">
+          <h2 className="text-lg sm:text-2xl font-semibold">
             {currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
           </h2>
-          <div className="flex gap-2">
+          <div className="flex gap-1 sm:gap-2">
             <Button
               variant="outline"
               size="icon"
+              className="h-8 w-8 sm:h-10 sm:w-10"
               onClick={() => navigateMonth('prev')}
             >
               <ChevronLeft className="h-4 w-4" />
@@ -386,6 +519,7 @@ ibold">
             <Button
               variant="outline"
               size="icon"
+              className="h-8 w-8 sm:h-10 sm:w-10"
               onClick={() => navigateMonth('next')}
             >
               <ChevronRight className="h-4 w-4" />
@@ -393,46 +527,27 @@ ibold">
           </div>
         </div>
 
-        <div className="grid grid-cols-7 gap-2 relative">
+        <div className="grid grid-cols-7 gap-1 sm:gap-2 relative">
           {weekDays.map((day) => (
             <div
               key={day}
-              className="text-center font-medium p-2"
+              className="text-center font-medium text-xs sm:text-sm p-1 sm:p-2"
             >
               {day}
             </div>
           ))}
           
-          {days.map(({ date, isCurrentMonth }, index) => {
-            const isSelected = isDateSelected(date)
-            
-            return (
-              <div
-                key={index}
-                className={cn(
-                  "relative p-2 text-center cursor-pointer transition-colors h-10",
-                  isCurrentMonth ? "text-foreground" : "text-muted-foreground",
-                  isSelected && "bg-primary/20"
-                )}
-                onClick={() => handleDateClick(date)}
-              >
-                <span className="relative z-20 inline-flex items-center justify-center w-6 h-6 rounded-full">
-                  {date.getDate()}
-                </span>
-              </div>
-            )
-          })}
+          {renderDays()}
           {renderEventCapsules()}
         </div>
-        {renderEventLabels()}
 
-        <div className="mt-4 pt-4 border-t">
-          <h3 className="text-lg font-semibold mb-2">Legend</h3>
-          <div className="flex flex-wrap gap-2">
+        <div className="mt-2 sm:mt-4 pt-2 sm:pt-4 border-t">
+          <h3 className="text-base sm:text-lg font-semibold mb-2">Your Events</h3>
+          <div className="flex flex-wrap gap-2 text-sm">
             {events.map((event) => (
               <div 
                 key={event.id} 
-                className="flex items-center cursor-pointer transition-all duration-300 hover:scale-110"
+                className="flex items-center cursor-pointer transition-all duration-300 hover:scale-105"
                 onClick={() => {
                   setEditingEvent(event)
                   setIsEditDialogOpen(true)
@@ -440,33 +555,24 @@ ibold">
                 onMouseEnter={() => setHoveredEventId(event.id)}
                 onMouseLeave={() => setHoveredEventId(null)}
               >
-                <div className={`w-4 h-4 rounded-full ${getColorClass(event.color)} mr-2`}></div>
-                <span className="text-sm">{event.label}</span>
+                <div className={`w-3 h-3 sm:w-4 sm:h-4 rounded-full ${getColorClass(event.color)} mr-2`}></div>
+                <span className="text-xs sm:text-sm">{event.label}</span>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      <div className="flex gap-2 mt-4">
-        <Button 
-          onClick={handleDownload}
-          className="flex-1 text-lg py-6"
-        >
-          <Download className="h-6 w-6 mr-2" />
-          Download
-        </Button>
-        <Button 
-          onClick={handleShare}
-          className="flex-1 text-lg py-6"
-        >
-          <Share className="h-6 w-6 mr-2" />
-          Share on Twitter
-        </Button>
-      </div>
+      <Button 
+        onClick={handleShare}
+        className="w-full mt-2 sm:mt-4 text-base sm:text-lg py-4 sm:py-6"
+      >
+        <Share className="h-4 w-4 sm:h-6 sm:w-6 mr-2" />
+        Share on Twitter
+      </Button>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
+        <DialogContent className="bg-white shadow-lg rounded-lg p-6">
           <DialogHeader>
             <DialogTitle>Add New Event</DialogTitle>
           </DialogHeader>
@@ -513,7 +619,7 @@ ibold">
       </Dialog>
 
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent>
+        <DialogContent className="bg-white shadow-lg rounded-lg p-6">
           <DialogHeader>
             <DialogTitle>Edit Event</DialogTitle>
           </DialogHeader>
@@ -565,4 +671,3 @@ ibold">
     </div>
   )
 }
-
