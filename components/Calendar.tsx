@@ -57,7 +57,7 @@ export function Calendar() {
     start: null,
     end: null,
     isSelecting: false,
-    tempColor: 'blue' // Default color for drag selection
+    tempColor: 'blue'
   })
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -72,24 +72,21 @@ export function Calendar() {
   const calendarRef = useRef<HTMLDivElement>(null)
   const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Responsive adjustments
   useEffect(() => {
     const handleResize = () => {
       setScreenWidth(window.innerWidth);
     };
     handleResize();
     window.addEventListener('resize', handleResize);
-    // Cleanup event listener on unmount
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const handleDateMouseDown = (date: Date) => {
-    // Reset any previous selections
     setDragSelection({
       start: date,
       end: date,
       isSelecting: true,
-      tempColor: newEventColor // Use the current new event color for drag selection
+      tempColor: newEventColor
     })
   }
 
@@ -104,15 +101,10 @@ export function Calendar() {
 
   const handleDateMouseUp = () => {
     if (dragSelection.start && dragSelection.end) {
-      // Get dates in the selected range
       const selectedRange = getDatesInRange(dragSelection.start, dragSelection.end)
-
-      // Set selected dates and open dialog
       setSelectedDates(selectedRange)
       setIsDialogOpen(true)
     }
-
-    // Reset drag selection
     setDragSelection({
       start: null,
       end: null,
@@ -129,7 +121,6 @@ export function Calendar() {
     return date >= start && date <= end;
   }
 
-  // Modify days rendering to include drag selection logic
   const renderDays = () => {
     return days.map(({ date, isCurrentMonth }, index) => {
       const isSelected = isDateSelected(date)
@@ -320,33 +311,23 @@ export function Calendar() {
   }, [draggedEvent, dragStart, dragEnd, days, events])
 
   const handleShare = async () => {
-    // Check if calendarRef exists
     if (calendarRef.current) {
       try {
-        // Use html2canvas to capture the calendar
         const canvas = await html2canvas(calendarRef.current, {
           useCORS: true,
           scale: window.devicePixelRatio,
           logging: false,
         });
-
-        // Convert canvas to image data URL
         const image = canvas.toDataURL('image/png');
-
-        // Create a temporary anchor element to trigger the download
         const link = document.createElement('a');
         link.href = image;
         link.download = 'calendar.png';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-
-        // Share to Twitter
         const text = "Check out my calendar this month!";
-        // shareToTwitter(image, text);
       } catch (error) {
         console.error('Error sharing calendar:', error);
-        // Optional: Add user-friendly error handling
         alert('Failed to share calendar. Please try again.');
       }
     }
